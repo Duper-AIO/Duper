@@ -3,12 +3,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import TaskAlarmHandler from '../src/components/TaskAlarmHandler';
 import { AppDataProvider, useAppData } from '../src/context/AppDataContext';
 import { theme } from '../src/theme/theme';
 
 function InnerLayout() {
   const { loading } = useAppData();
+  const insets = useSafeAreaInsets();
 
   if (loading) {
     return (
@@ -25,8 +27,8 @@ function InnerLayout() {
         tabBarStyle: {
           backgroundColor: theme.colors.card,
           borderTopColor: theme.colors.border,
-          height: 60, // Taller bar for better touch targets
-          paddingBottom: 8,
+          height: 60 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 8),
           paddingTop: 8
         },
         tabBarActiveTintColor: theme.colors.primary,
@@ -102,9 +104,11 @@ function InnerLayout() {
 export default function RootLayout() {
   return (
     <AppDataProvider>
-      <TaskAlarmHandler>
-        <InnerLayout />
-      </TaskAlarmHandler>
+      <SafeAreaProvider>
+        <TaskAlarmHandler>
+          <InnerLayout />
+        </TaskAlarmHandler>
+      </SafeAreaProvider>
     </AppDataProvider>
   );
 }

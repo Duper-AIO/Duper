@@ -3,21 +3,21 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Dimensions,
-  Modal,
-  PanResponder,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  Vibration,
-  View
+    Animated,
+    Dimensions,
+    Modal,
+    PanResponder,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    Vibration,
+    View
 } from 'react-native';
 import { theme } from '../theme/theme';
 
 // Make sure this path matches your file structure
-import { ANDROID_CHANNEL_ID } from '../utils/alarmManager';
+import { ANDROID_CHANNEL_IDS, AlarmMode } from '../utils/alarmManager';
 
 const { width } = Dimensions.get('window');
 const SLIDE_THRESHOLD = width * 0.35; // Increased slightly to prevent accidental swipes
@@ -31,7 +31,14 @@ interface ActiveAlarm {
   title: string;
   body?: string;
   taskId?: string;
+  alarmMode: AlarmMode;
 }
+
+const parseAlarmMode = (value: unknown): AlarmMode => {
+  if (value === 'silent') return 'silent';
+  if (value === 'vibrate' && Platform.OS === 'android') return 'vibrate';
+  return 'sound';
+};
 
 const TaskAlarmHandler: React.FC<TaskAlarmHandlerProps> = ({ children }) => {
   const [activeAlarm, setActiveAlarm] = useState<ActiveAlarm | null>(null);
@@ -55,22 +62,12 @@ const TaskAlarmHandler: React.FC<TaskAlarmHandlerProps> = ({ children }) => {
   // 3. Continuous Vibration Logic
   // ---------------------------------------------------------
   useEffect(() => {
-    let iosInterval: any;
-
-    if (activeAlarm) {
-      if (Platform.OS === 'android') {
-        Vibration.vibrate([0, 500, 1000], true);
-      } else {
-        Vibration.vibrate();
-        iosInterval = setInterval(() => {
-          Vibration.vibrate();
-        }, 1200);
-      }
+    if (Platform.OS === 'android' && activeAlarm?.alarmMode === 'vibrate') {
+      Vibration.vibrate([0, 500, 1000], true);
     }
 
     return () => {
-      Vibration.cancel();
-      if (iosInterval) clearInterval(iosInterval);
+      if (Platform.OS !== 'web') Vibration.cancel();
     };
   }, [activeAlarm]);
 
@@ -78,6 +75,8 @@ const TaskAlarmHandler: React.FC<TaskAlarmHandlerProps> = ({ children }) => {
   // 4. Notification Listeners
   // ---------------------------------------------------------
   useEffect(() => {
+    if (Platform.OS === 'web') return;
+
     const receivedSub =
       Notifications.addNotificationReceivedListener((notification) => {
         const { title, body, data } = notification.request.content;
@@ -89,12 +88,12 @@ const TaskAlarmHandler: React.FC<TaskAlarmHandlerProps> = ({ children }) => {
           notificationId,
           title: title ?? 'Task reminder',
           body: body ?? '',
-          taskId: (data as any)?.taskId
+          taskId: (data as any)?.taskId,
+          alarmMode: parseAlarmMode((data as any)?.alarmMode)
         });
       });
 
-    const responseSub =
-      Notifications.addNotificationResponseReceivedListener(async (response) => {
+    const handleResponse = async (response: Notifications.NotificationResponse) => {
         const n = response.notification;
         const { title, body, data } = n.request.content;
         const notificationId = n.request.identifier;
@@ -104,19 +103,28 @@ const TaskAlarmHandler: React.FC<TaskAlarmHandlerProps> = ({ children }) => {
           notificationId,
           title: title ?? 'Task reminder',
           body: body ?? '',
-          taskId: (data as any)?.taskId
+          taskId: (data as any)?.taskId,
+          alarmMode: parseAlarmMode((data as any)?.alarmMode)
         };
 
         if (actionId === 'snooze') {
+          Vibration.cancel();
           await performSnooze(alarmData, 5);
           setActiveAlarm(null);
         } else if (actionId === 'stop') {
+          Vibration.cancel();
           await Notifications.dismissNotificationAsync(notificationId);
           setActiveAlarm(null);
         } else {
           setActiveAlarm(alarmData);
         }
-      });
+    };
+
+    const responseSub = Notifications.addNotificationResponseReceivedListener(handleResponse);
+    Notifications.getLastNotificationResponseAsync().then(async response => {
+      if (response) await handleResponse(response);
+      await Notifications.clearLastNotificationResponseAsync();
+    });
 
     return () => {
       receivedSub.remove();
@@ -140,7 +148,7 @@ const TaskAlarmHandler: React.FC<TaskAlarmHandlerProps> = ({ children }) => {
     const trigger: any = {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: snoozeTime,
-      channelId: Platform.OS === 'android' ? ANDROID_CHANNEL_ID : undefined,
+      channelId: Platform.OS === 'android' ? ANDROID_CHANNEL_IDS[alarm.alarmMode] : undefined,
     };
 
     try {
@@ -148,8 +156,8 @@ const TaskAlarmHandler: React.FC<TaskAlarmHandlerProps> = ({ children }) => {
         content: {
           title: alarm.title,
           body: `Snoozed (${minutes}m): ` + (alarm.body || 'Task reminder'),
-          data: alarm.taskId ? { taskId: alarm.taskId } : undefined,
-          sound: 'default',
+          data: alarm.taskId ? { taskId: alarm.taskId, alarmMode: alarm.alarmMode } : { alarmMode: alarm.alarmMode },
+          sound: alarm.alarmMode === 'sound' || (Platform.OS === 'ios' && alarm.alarmMode === 'vibrate') ? 'default' : false,
           categoryIdentifier: 'alarm',
           priority: Notifications.AndroidNotificationPriority.MAX,
         },
@@ -172,6 +180,7 @@ const TaskAlarmHandler: React.FC<TaskAlarmHandlerProps> = ({ children }) => {
   const executeClose = async () => {
     const alarm = activeAlarmRef.current;
     if (!alarm) return;
+    Vibration.cancel();
 
     if (alarm.notificationId) {
       try {
@@ -332,6 +341,11 @@ const TaskAlarmHandler: React.FC<TaskAlarmHandlerProps> = ({ children }) => {
             </Animated.View>
           </View>
 
+          <TouchableOpacity style={styles.stopButton} onPress={executeClose} accessibilityRole="button">
+            <Ionicons name="stop-circle-outline" size={20} color="#fff" />
+            <Text style={styles.stopButtonText}>Stop alert</Text>
+          </TouchableOpacity>
+
         </Animated.View>
       </Modal>
     </>
@@ -402,6 +416,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  stopButton: {
+    minHeight: 48,
+    paddingHorizontal: 18,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 24,
+  },
+  stopButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   track: {
     position: 'absolute',
     width: '100%',

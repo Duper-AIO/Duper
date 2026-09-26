@@ -5,23 +5,33 @@ import { Platform } from 'react-native';
 /**
  * CONFIGURATION
  */
-// Channel ID (v2 to force vibration update)
-export const ANDROID_CHANNEL_ID = 'task-reminders-v2';
+export const ANDROID_CHANNEL_IDS: Record<AlarmMode, string> = {
+  sound: 'task-reminders-sound-v3',
+  vibrate: 'task-reminders-vibrate-v3',
+  silent: 'task-reminders-silent-v3',
+};
+
+export const ANDROID_CHANNEL_ID = ANDROID_CHANNEL_IDS.vibrate;
 
 // Notification Handler
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async (notification) => {
+      const mode = notification.request.content.data?.alarmMode;
+      return {
+        shouldShowAlert: true,
+        shouldPlaySound: Platform.OS === 'android' || mode !== 'silent',
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      };
+    },
+  });
+}
 
 // ---------------- TYPES ----------------
 
-export type AlarmLeadMinutes = 0 | 5 | 30;
+export type AlarmLeadMinutes = 0 | 5 | 10 | 30;
 export type AlarmMode = 'silent' | 'sound' | 'vibrate';
 
 export interface TaskForAlarm {
@@ -39,20 +49,24 @@ export interface AlarmSettings {
 // ---------------- INIT ----------------
 
 export async function initTaskAlarms() {
-  // 1. Setup Android Channel
+  if (Platform.OS === 'web') return;
+
+  // Android channels are immutable after creation, so each mode has its own channel.
   if (Platform.OS === 'android') {
-    try {
-      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
-        name: 'Task reminders',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#2563EB',
-        sound: 'default',
-        enableVibrate: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      });
-    } catch (e) {
-      console.warn('Failed to set Android notification channel', e);
+    for (const mode of ['sound', 'vibrate', 'silent'] as const) {
+      try {
+        await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_IDS[mode], {
+          name: `Task reminders (${mode})`,
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: mode === 'vibrate' ? [0, 600, 300, 600, 300, 600] : [],
+          lightColor: '#2563EB',
+          sound: mode === 'sound' ? 'default' : null,
+          enableVibrate: mode === 'vibrate',
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        });
+      } catch (e) {
+        console.warn(`Failed to set Android ${mode} notification channel`, e);
+      }
     }
   }
 
@@ -111,9 +125,19 @@ export async function scheduleTaskReminder(
   task: TaskForAlarm,
   settings: AlarmSettings
 ): Promise<string | null> {
-  const { leadMinutes, mode } = settings;
+  if (Platform.OS === 'web') return null;
+
+  const { leadMinutes } = settings;
+  const mode: AlarmMode = Platform.OS === 'android' ? settings.mode : settings.mode === 'silent' ? 'silent' : 'sound';
 
   if (leadMinutes <= 0) return null;
+
+  await initTaskAlarms();
+  const permission = await Notifications.getPermissionsAsync();
+  if (!permission.granted) {
+    console.warn('Task reminder was not scheduled because notification permission is not granted');
+    return null;
+  }
 
   const taskDateTime = getTaskStartDateTime(task);
   const triggerTime = new Date(taskDateTime.getTime() - leadMinutes * 60 * 1000);
@@ -136,24 +160,19 @@ export async function scheduleTaskReminder(
       taskId: task.id,
       taskTitle: task.title,
       taskDate: task.date,
-      taskStartTime: task.startTime ?? null
+      taskStartTime: task.startTime ?? null,
+      alarmMode: mode,
+      leadMinutes,
     },
   };
 
-  // Handle Modes
-  if (mode === 'sound') {
-    content.sound = 'default'; 
-  } else if (mode === 'silent') {
-    content.sound = undefined;      
-  } else if (mode === 'vibrate') {
-    content.sound = 'default'; 
-  }
+  content.sound = mode === 'sound' || (Platform.OS === 'ios' && mode === 'vibrate') ? 'default' : false;
 
   // Prepare Trigger
   const trigger: any = {
     type: Notifications.SchedulableTriggerInputTypes.DATE,
     date: triggerTime,
-    channelId: Platform.OS === 'android' ? ANDROID_CHANNEL_ID : undefined,
+    channelId: Platform.OS === 'android' ? ANDROID_CHANNEL_IDS[mode] : undefined,
   };
 
   try {
@@ -169,9 +188,16 @@ export async function scheduleTaskReminder(
 }
 
 export async function cancelReminderById(notificationId: string) {
+  if (Platform.OS === 'web') return;
+
   try {
     await Notifications.cancelScheduledNotificationAsync(notificationId);
   } catch (e) {
-    console.warn('Failed to cancel reminder', e);
+    console.warn('Failed to cancel scheduled reminder', e);
+  }
+  try {
+    await Notifications.dismissNotificationAsync(notificationId);
+  } catch (e) {
+    console.warn('Failed to dismiss delivered reminder', e);
   }
 }

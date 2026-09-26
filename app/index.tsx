@@ -21,6 +21,7 @@ import {
   View
 } from 'react-native';
 
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppData } from '../src/context/AppDataContext';
 
 // ==========================================
@@ -372,7 +373,7 @@ const HomeScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
 
       <ScrollView 
@@ -581,7 +582,7 @@ const HomeScreen: React.FC = () => {
         </View>
       </Modal>
 
-    </View>
+    </SafeAreaView>
   );
 };
 
