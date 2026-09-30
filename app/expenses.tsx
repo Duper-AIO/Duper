@@ -4,19 +4,19 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
-  Animated,
-  FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  PanResponder,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Alert,
+    Animated,
+    FlatList,
+    KeyboardAvoidingView,
+    Modal,
+    PanResponder,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -181,14 +181,14 @@ export default function ExpensesScreen() {
 
   if (loading) {
     return (
-        <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]} edges={['top']}>
             <Text style={{color: '#666'}}>Loading Finances...</Text>
         </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* HEADER */}
       <View style={styles.header}>
         <View>
@@ -416,6 +416,8 @@ const HistoryTab = ({ transactions, onDelete, onArchive, onImport }: any) => {
 
 const InsightsTab = ({ transactions }: { transactions: Transaction[] }) => {
   const [insightType, setInsightType] = useState<'debit' | 'credit'>('debit');
+  const [chartMode, setChartMode] = useState<'bars' | 'ogive'>('bars');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const activeTransactions = transactions.filter(t => !t.isArchived && t.type === insightType);
   const totalAmount = activeTransactions.reduce((acc, c) => acc + c.amount, 0);
@@ -433,6 +435,18 @@ const InsightsTab = ({ transactions }: { transactions: Transaction[] }) => {
       color: CATEGORY_COLORS[cat] || '#9CA3AF'
     }))
     .sort((a, b) => b.amount - a.amount);
+  const categorySignature = JSON.stringify(sortedCategories.map(category => category.name));
+  const selected = sortedCategories.find(category => category.name === selectedCategory);
+  const selectedCumulativeAmount = selected
+    ? sortedCategories.slice(0, sortedCategories.indexOf(selected) + 1).reduce((sum, category) => sum + category.amount, 0)
+    : totalAmount;
+
+  useEffect(() => {
+    const categoryNames: string[] = JSON.parse(categorySignature);
+    if (!selectedCategory || !categoryNames.includes(selectedCategory)) {
+      setSelectedCategory(categoryNames[0] ?? null);
+    }
+  }, [insightType, selectedCategory, categorySignature]);
 
   return (
     <ScrollView style={styles.flex1} contentContainerStyle={{ padding: 16 }}>
@@ -453,14 +467,56 @@ const InsightsTab = ({ transactions }: { transactions: Transaction[] }) => {
       </View>
 
       <View style={styles.chartCard}>
-        <Text style={styles.chartTitle}>{insightType === 'debit' ? 'Expense' : 'Income'} Breakdown</Text>
+        <View style={styles.chartHeading}>
+          <Text style={styles.chartTitle}>
+            {insightType === 'debit' ? 'Expense' : 'Income'} {chartMode === 'bars' ? 'By Category' : 'Cumulative Ogive'}
+          </Text>
+          <View style={styles.chartModeToggle}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="3D bar chart"
+              accessibilityState={{ selected: chartMode === 'bars' }}
+              style={[styles.chartModeButton, chartMode === 'bars' && styles.chartModeButtonActive]}
+              onPress={() => setChartMode('bars')}
+            >
+              <Ionicons name="stats-chart" size={16} color={chartMode === 'bars' ? '#fff' : '#64748B'} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Cumulative ogive chart"
+              accessibilityState={{ selected: chartMode === 'ogive' }}
+              style={[styles.chartModeButton, chartMode === 'ogive' && styles.chartModeButtonActive]}
+              onPress={() => setChartMode('ogive')}
+            >
+              <Ionicons name="trending-up" size={16} color={chartMode === 'ogive' ? '#fff' : '#64748B'} />
+            </TouchableOpacity>
+          </View>
+        </View>
         {totalAmount > 0 ? (
-          <View style={styles.pieContainer}>
-             <SimplePieChart data={sortedCategories} />
-             <View style={styles.pieCenterOverlay}>
-               <Text style={styles.chartTotal}>{formatCurrency(totalAmount)}</Text>
-               <Text style={styles.chartSub}>Total</Text>
-             </View>
+          <View style={styles.chartContent}>
+            <View style={styles.chartSelection}>
+              <View style={[styles.selectionSwatch, { backgroundColor: selected?.color ?? theme.colors.primary }]} />
+              <View style={styles.selectionCopy}>
+                <Text style={styles.selectionName}>{selected?.name ?? 'All categories'}</Text>
+                <Text style={styles.chartSub}>
+                  {selected
+                    ? chartMode === 'ogive'
+                      ? `${((selectedCumulativeAmount / totalAmount) * 100).toFixed(1)}% cumulative`
+                      : `${selected.percentage.toFixed(1)}% of total`
+                    : 'Select a category'}
+                </Text>
+              </View>
+              <Text style={styles.chartTotal}>
+                {formatCurrency(chartMode === 'ogive' ? selectedCumulativeAmount : selected?.amount ?? totalAmount)}
+              </Text>
+            </View>
+            <InteractiveInsightChart
+              data={sortedCategories}
+              mode={chartMode}
+              selectedCategory={selectedCategory}
+              onSelect={setSelectedCategory}
+            />
+            <Text style={styles.chartHint}>Tap a {chartMode === 'bars' ? 'bar' : 'point'} to inspect a category</Text>
           </View>
         ) : (
           <Text style={{textAlign:'center', color:'#999', marginVertical:20}}>No data</Text>
@@ -469,8 +525,14 @@ const InsightsTab = ({ transactions }: { transactions: Transaction[] }) => {
 
       <Text style={styles.sectionTitle}>Categories</Text>
       
-      {sortedCategories.map((cat, index) => (
-        <View key={index} style={styles.statRow}>
+      {sortedCategories.map((cat) => (
+        <TouchableOpacity
+          key={cat.name}
+          accessibilityRole="button"
+          accessibilityState={{ selected: selectedCategory === cat.name }}
+          onPress={() => setSelectedCategory(cat.name)}
+          style={[styles.statRow, selectedCategory === cat.name && styles.statRowSelected]}
+        >
           <View style={styles.statInfo}>
              <View style={styles.row}>
                 <View style={[styles.dot, { backgroundColor: cat.color }]} />
@@ -482,30 +544,97 @@ const InsightsTab = ({ transactions }: { transactions: Transaction[] }) => {
              <View style={[styles.progressBarFill, { width: `${cat.percentage}%`, backgroundColor: cat.color }]} />
           </View>
           <Text style={styles.statPercent}>{cat.percentage.toFixed(1)}%</Text>
-        </View>
+        </TouchableOpacity>
       ))}
     </ScrollView>
   );
 };
 
-const SimplePieChart = ({ data }: { data: any[] }) => {
+type InsightCategory = { name: string; amount: number; percentage: number; color: string };
+
+const InteractiveInsightChart = ({
+  data,
+  mode,
+  selectedCategory,
+  onSelect
+}: {
+  data: InsightCategory[];
+  mode: 'bars' | 'ogive';
+  selectedCategory: string | null;
+  onSelect: (category: string) => void;
+}) => {
+  const itemWidth = 64;
+  const chartWidth = Math.max(280, data.length * itemWidth);
+  const plotHeight = 150;
+  const maxAmount = Math.max(...data.map(item => item.amount), 1);
+  const cumulativeTotal = data.reduce((total, item) => total + item.amount, 0);
+  const points = data.map((item, index) => ({
+    x: index * itemWidth + itemWidth / 2,
+    y: plotHeight - ((data.slice(0, index + 1).reduce((total, entry) => total + entry.amount, 0) / cumulativeTotal) * (plotHeight - 16)),
+    item
+  }));
+
   return (
-    <View style={{ height: 200, width: 200, position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
-       {data.map((item, index) => (
-         <View 
-           key={index} 
-           style={{
-             position: 'absolute',
-             width: 200 - (index * 25),
-             height: 200 - (index * 25),
-             borderRadius: 100,
-             borderWidth: 10,
-             borderColor: item.color,
-             opacity: 1
-           }} 
-         />
-       ))}
-    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ minWidth: '100%' }}>
+      <View style={[styles.chartPlot, { width: chartWidth, height: plotHeight + 34 }]}>
+        <View style={styles.chartBaseline} />
+        {mode === 'bars' ? data.map(item => {
+          const barHeight = Math.max(8, (item.amount / maxAmount) * (plotHeight - 18));
+          const isSelected = selectedCategory === item.name;
+          return (
+            <TouchableOpacity
+              key={item.name}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.name}, ${formatCurrency(item.amount)}, ${item.percentage.toFixed(1)} percent`}
+              accessibilityState={{ selected: isSelected }}
+              onPress={() => onSelect(item.name)}
+              style={[styles.chartBarColumn, { width: itemWidth }]}
+            >
+              <View style={[styles.chartBar, { height: barHeight, backgroundColor: item.color, opacity: isSelected ? 1 : 0.76 }]}>
+                <View style={[styles.chartBarTop, { backgroundColor: item.color }]} />
+                <View style={[styles.chartBarSide, { backgroundColor: item.color }]} />
+              </View>
+              <Text numberOfLines={1} style={[styles.chartCategoryLabel, isSelected && styles.chartCategoryLabelSelected]}>{item.name}</Text>
+            </TouchableOpacity>
+          );
+        }) : (
+          <>
+            {points.slice(0, -1).map((point, index) => {
+              const next = points[index + 1];
+              const dx = next.x - point.x;
+              const dy = next.y - point.y;
+              const length = Math.sqrt(dx * dx + dy * dy);
+              const angle = `${Math.atan2(dy, dx)}rad`;
+              return (
+                <View
+                  key={`line-${point.item.name}`}
+                  pointerEvents="none"
+                  style={[styles.ogiveLine, { width: length, left: (point.x + next.x - length) / 2, top: (point.y + next.y) / 2, transform: [{ rotate: angle }] }]}
+                />
+              );
+            })}
+            {points.map(({ x, y, item }) => {
+              const isSelected = selectedCategory === item.name;
+              return (
+                <TouchableOpacity
+                  key={item.name}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.name}, cumulative ${formatCurrency(data.slice(0, data.indexOf(item) + 1).reduce((total, entry) => total + entry.amount, 0))}`}
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => onSelect(item.name)}
+                  style={[styles.ogivePoint, { left: x - 9, top: y - 9, backgroundColor: item.color }, isSelected && styles.ogivePointSelected]}
+                />
+              );
+            })}
+            <View style={styles.ogiveLabels}>
+              {data.map(item => (
+                <Text key={item.name} numberOfLines={1} style={[styles.chartCategoryLabel, { width: itemWidth }, selectedCategory === item.name && styles.chartCategoryLabelSelected]}>{item.name}</Text>
+              ))}
+            </View>
+          </>
+        )}
+      </View>
+    </ScrollView>
   );
 };
 
@@ -641,13 +770,14 @@ const AddTransactionModal = ({ visible, onClose, onSave }: any) => {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <View style={styles.modalHeader}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <View style={styles.modalHeader}>
            <Text style={styles.modalTitle}>Add Transaction</Text>
            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={24} color="#333" /></TouchableOpacity>
         </View>
         
-        <ScrollView style={styles.modalContent}>
+          <ScrollView style={styles.modalContent}>
           <View style={styles.typeSegment}>
             <TouchableOpacity onPress={() => setType('debit')} style={[styles.typeBtn, type === 'debit' && styles.typeBtnActiveDebit]}>
                <Text style={[styles.typeText, type === 'debit' && { color: '#fff' }]}>Expense</Text>
@@ -705,8 +835,9 @@ const AddTransactionModal = ({ visible, onClose, onSave }: any) => {
               <Text style={styles.saveButtonText}>Save Transaction</Text>
           </TouchableOpacity>
           <View style={{height: 60}} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   );
 };
@@ -789,14 +920,35 @@ const styles = StyleSheet.create({
   insightToggleActive: { backgroundColor: theme.colors.primary },
   insightToggleText: { fontWeight: '600', color: '#6B7280' },
 
-  chartCard: { backgroundColor: '#fff', padding: 20, borderRadius: 20, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#E5E7EB' },
-  chartTitle: { fontSize: 14, color: '#6B7280', fontWeight: '600', marginBottom: 20 },
-  pieContainer: { alignItems: 'center', justifyContent: 'center' },
-  pieCenterOverlay: { position: 'absolute', alignItems: 'center' },
-  chartTotal: { fontSize: 24, fontWeight: '800', color: '#111' },
+  chartCard: { backgroundColor: '#fff', padding: 16, borderRadius: 16, alignItems: 'stretch', marginBottom: 20, borderWidth: 1, borderColor: '#E5E7EB' },
+  chartHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  chartTitle: { fontSize: 14, color: '#6B7280', fontWeight: '600' },
+  chartModeToggle: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 8, padding: 3 },
+  chartModeButton: { width: 34, height: 30, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  chartModeButtonActive: { backgroundColor: theme.colors.primary },
+  chartContent: { alignItems: 'stretch' },
+  chartSelection: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  selectionSwatch: { width: 10, height: 10, borderRadius: 5, marginRight: 9 },
+  selectionCopy: { flex: 1 },
+  selectionName: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  chartTotal: { fontSize: 16, fontWeight: '800', color: '#111' },
   chartSub: { fontSize: 12, color: '#9CA3AF' },
+  chartPlot: { position: 'relative', marginTop: 6 },
+  chartBaseline: { position: 'absolute', left: 0, right: 0, bottom: 31, height: 1, backgroundColor: '#E2E8F0' },
+  chartBarColumn: { position: 'absolute', bottom: 0, height: '100%', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 0 },
+  chartBar: { width: 30, marginBottom: 30, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  chartBarTop: { position: 'absolute', top: -6, left: 0, width: 30, height: 7, borderTopLeftRadius: 3, transform: [{ skewX: '-35deg' }], opacity: 0.65 },
+  chartBarSide: { position: 'absolute', top: -3, right: -7, bottom: 0, width: 7, transform: [{ skewY: '-25deg' }], opacity: 0.48 },
+  chartCategoryLabel: { position: 'absolute', bottom: 7, width: 64, textAlign: 'center', color: '#64748B', fontSize: 10 },
+  chartCategoryLabelSelected: { color: '#111827', fontWeight: '700' },
+  chartHint: { alignSelf: 'center', marginTop: 2, color: '#94A3B8', fontSize: 11 },
+  ogiveLine: { position: 'absolute', height: 3, backgroundColor: '#334155', borderRadius: 2 },
+  ogivePoint: { position: 'absolute', width: 18, height: 18, borderRadius: 9, borderWidth: 3, borderColor: '#fff', elevation: 2 },
+  ogivePointSelected: { width: 22, height: 22, borderRadius: 11, borderWidth: 4 },
+  ogiveLabels: { position: 'absolute', left: 0, right: 0, bottom: 7, flexDirection: 'row' },
   
   statRow: { marginBottom: 16, backgroundColor: '#fff', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#F9FAFB' },
+  statRowSelected: { borderColor: theme.colors.primary, backgroundColor: '#F8FBFF' },
   statInfo: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
   statName: { fontSize: 15, fontWeight: '600', color: '#333' },

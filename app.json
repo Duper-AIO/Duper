@@ -30,6 +30,7 @@
       "versionCode": 2,
       "predictiveBackGestureEnabled": false,
       "permissions": [
+        "com.android.alarm.permission.SET_ALARM",
         "android.permission.VIBRATE",
         "android.permission.WAKE_LOCK",
         "android.permission.USE_FULL_SCREEN_INTENT",
@@ -73,6 +74,52 @@
         }
       ],
       "expo-notifications",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "PlannerTasks",
+              "label": "Duper tasks",
+              "description": "Today's tasks with quick completion and an Add action.",
+              "minWidth": "210dp",
+              "minHeight": "170dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "PlannerMonth",
+              "label": "Duper month",
+              "description": "A monthly calendar with today highlighted and task markers.",
+              "minWidth": "250dp",
+              "minHeight": "245dp",
+              "targetCellWidth": 5,
+              "targetCellHeight": 4,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "PlannerToday",
+              "label": "Duper today",
+              "description": "Today's date beside your upcoming tasks.",
+              "minWidth": "280dp",
+              "minHeight": "150dp",
+              "targetCellWidth": 5,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Duper uses your calendar to sync planner tasks you choose."
+        }
+      ],
       "expo-image-picker",
       "expo-document-picker",
       [

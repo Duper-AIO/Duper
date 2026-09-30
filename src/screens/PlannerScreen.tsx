@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -12,6 +13,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -25,9 +27,13 @@ import {
   initTaskAlarms,
   scheduleTaskReminder,
 } from '../utils/alarmManager';
+import { deleteTaskCalendarEvent, saveTaskToCalendar } from '../utils/calendarSync';
+import { openClockAlarm } from '../utils/clockAlarm';
+import { PLANNER_TASKS_STORAGE_KEY } from '../widgets/taskData';
+import { refreshPlannerWidgets } from '../widgets/widgetRuntime';
 
 // --- Configuration ---
-const STORAGE_KEY = 'plannerTasks_v3';
+const STORAGE_KEY = PLANNER_TASKS_STORAGE_KEY;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = 80;
 const PRIMARY_COLOR = '#007AFF'; // iOS Blue
@@ -36,6 +42,9 @@ const ACCENT_COLOR = '#FF3B30'; // iOS Red (for Today/Delete)
 // --- Types ---
 type RepeatRule = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 type TaskType = 'task' | 'event';
+
+const isAlarmLeadMinutes = (value: unknown): value is AlarmLeadMinutes =>
+  value === 0 || value === 5 || value === 10 || value === 30;
 
 interface Task {
   id: string;
@@ -55,6 +64,7 @@ interface Task {
   reminderLeadMinutes?: AlarmLeadMinutes;
   alarmMode?: AlarmMode;
   notificationId?: string | null;
+  calendarEventId?: string | null;
 }
 
 // --- Date Helpers ---
@@ -136,6 +146,8 @@ const SwipeableTask = ({
 
 // --- Main Component ---
 const PlannerScreen: React.FC = () => {
+  const routeParams = useLocalSearchParams<{ addTask?: string; date?: string }>();
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -158,11 +170,13 @@ const PlannerScreen: React.FC = () => {
   const [formDate, setFormDate] = useState<Date>(selectedDate);
   const [alarmLead, setAlarmLead] = useState<AlarmLeadMinutes>(0);
   const [alarmMode, setAlarmMode] = useState<AlarmMode>('sound');
+  const [syncToCalendar, setSyncToCalendar] = useState(false);
 
   // Pickers
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [activeTimeField, setActiveTimeField] = useState<'start' | 'end'>('start');
+  const openCreateModalRef = useRef<() => void>(() => {});
 
   // --- Effects ---
   useEffect(() => {
@@ -183,6 +197,7 @@ const PlannerScreen: React.FC = () => {
   const saveTasks = async (next: Task[]) => {
     setTasks(next);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    void refreshPlannerWidgets().catch(error => console.warn('Could not refresh planner widgets', error));
   };
 
   const occursOnDate = (task: Task, dateStr: string): boolean => {
@@ -236,8 +251,30 @@ const PlannerScreen: React.FC = () => {
     setFormDate(selectedDate);
     setAlarmLead(0);
     setAlarmMode('sound');
+    setSyncToCalendar(false);
     setModalVisible(true);
   };
+
+  openCreateModalRef.current = openCreateModal;
+
+  useEffect(() => {
+    const routeDate = Array.isArray(routeParams.date) ? routeParams.date[0] : routeParams.date;
+    const addTask = Array.isArray(routeParams.addTask) ? routeParams.addTask[0] : routeParams.addTask;
+    if (!routeDate && addTask !== '1') return;
+
+    let requestedDate: Date | null = null;
+    if (routeDate && /^\d{4}-\d{2}-\d{2}$/.test(routeDate)) {
+      const [year, month, day] = routeDate.split('-').map(Number);
+      requestedDate = new Date(year, month - 1, day);
+      setSelectedDate(requestedDate);
+      setCurrentMonth(requestedDate);
+    }
+    if (addTask === '1') {
+      openCreateModalRef.current();
+      if (requestedDate) setFormDate(requestedDate);
+    }
+    router.replace('/planner');
+  }, [routeParams.addTask, routeParams.date, router]);
 
   const openEditModal = (task: Task) => {
     setEditingTask(task);
@@ -250,8 +287,9 @@ const PlannerScreen: React.FC = () => {
     setAssociated(task.associated || '');
     setRepeat(task.repeat);
     setFormDate(toDate(task.date));
-    setAlarmLead(task.reminderLeadMinutes ?? 0);
-    setAlarmMode(task.alarmMode ?? 'sound');
+    setAlarmLead(isAlarmLeadMinutes(task.reminderLeadMinutes) ? task.reminderLeadMinutes : 0);
+    setAlarmMode(Platform.OS === 'android' ? task.alarmMode ?? 'sound' : task.alarmMode === 'silent' ? 'silent' : 'sound');
+    setSyncToCalendar(Boolean(task.calendarEventId));
     setModalVisible(true);
   };
 
@@ -260,6 +298,25 @@ const PlannerScreen: React.FC = () => {
       Alert.alert('Missing Info', 'Please provide a title.');
       return;
     }
+    let calendarEventId = editingTask?.calendarEventId ?? null;
+    try {
+      if (syncToCalendar) {
+        calendarEventId = await saveTaskToCalendar({
+          title: title.trim(),
+          date: formatYMD(formDate),
+          startTime: startTime || undefined,
+          endTime: endTime || undefined,
+          notes: notes || undefined,
+          repeat,
+        }, calendarEventId);
+      } else if (calendarEventId) {
+        await deleteTaskCalendarEvent(calendarEventId);
+        calendarEventId = null;
+      }
+    } catch (error) {
+      Alert.alert('Calendar sync unavailable', error instanceof Error ? error.message : 'Could not update the phone calendar.');
+    }
+
     const newTaskBase = {
       title: title.trim(),
       date: formatYMD(formDate),
@@ -272,6 +329,7 @@ const PlannerScreen: React.FC = () => {
       type,
       reminderLeadMinutes: alarmLead,
       alarmMode,
+      calendarEventId,
       updatedAt: new Date().toISOString(),
     };
 
@@ -279,7 +337,7 @@ const PlannerScreen: React.FC = () => {
     if (editingTask) {
       if (editingTask.notificationId) await cancelReminderById(editingTask.notificationId);
       const updated = { ...editingTask, ...newTaskBase };
-      if (alarmLead > 0 && updated.startTime) {
+      if (alarmLead > 0) {
         updated.notificationId = await scheduleTaskReminder(updated, { leadMinutes: alarmLead, mode: alarmMode });
       } else {
         updated.notificationId = null;
@@ -288,13 +346,31 @@ const PlannerScreen: React.FC = () => {
     } else {
       const newId = Date.now().toString();
       let notifId = null;
-      if (alarmLead > 0 && newTaskBase.startTime) {
+      if (alarmLead > 0) {
         notifId = await scheduleTaskReminder({ id: newId, ...newTaskBase } as Task, { leadMinutes: alarmLead, mode: alarmMode });
       }
       updatedTasks.push({ id: newId, ...newTaskBase, isCompleted: false, createdAt: new Date().toISOString(), notificationId: notifId });
     }
     await saveTasks(updatedTasks);
     setModalVisible(false);
+  };
+
+  const handleSetClockAlarm = async () => {
+    if (!startTime) {
+      Alert.alert('Start time required', 'Set a task start time before creating a phone Clock alarm.');
+      return;
+    }
+    try {
+      await openClockAlarm({
+        title: title.trim() || 'Duper task',
+        date: formatYMD(formDate),
+        startTime,
+        leadMinutes: alarmLead,
+        vibrate: alarmMode === 'vibrate',
+      });
+    } catch (error) {
+      Alert.alert('Clock unavailable', error instanceof Error ? error.message : 'Could not open the phone Clock app.');
+    }
   };
 
   const handleDelete = async (task: Task) => {
@@ -305,6 +381,13 @@ const PlannerScreen: React.FC = () => {
         style: 'destructive',
         onPress: async () => {
           if (task.notificationId) await cancelReminderById(task.notificationId);
+          if (task.calendarEventId) {
+            try {
+              await deleteTaskCalendarEvent(task.calendarEventId);
+            } catch (error) {
+              Alert.alert('Calendar event not removed', error instanceof Error ? error.message : 'Remove it manually from the phone calendar.');
+            }
+          }
           await saveTasks(tasks.filter((t) => t.id !== task.id));
         },
       },
@@ -314,9 +397,13 @@ const PlannerScreen: React.FC = () => {
   const toggleComplete = (task: Task) => {
     const todayStr = formatYMD(selectedDate);
     if (task.repeat === 'none') {
-      saveTasks(
-        tasks.map((t) => t.id === task.id ? { ...t, isCompleted: !t.isCompleted } : t)
-      );
+      const isCompleting = !task.isCompleted;
+      if (isCompleting && task.notificationId) {
+        void cancelReminderById(task.notificationId);
+      }
+      saveTasks(tasks.map((t) => t.id === task.id
+        ? { ...t, isCompleted: !t.isCompleted, notificationId: isCompleting ? null : t.notificationId }
+        : t));
       return;
     }
     Alert.alert(
@@ -327,8 +414,11 @@ const PlannerScreen: React.FC = () => {
         {
           text: 'Only this task',
           onPress: () => {
+            if (task.notificationId) void cancelReminderById(task.notificationId);
             saveTasks(
-              tasks.map((t) => t.id === task.id ? { ...t, completedExceptions: [...(t.completedExceptions || []), todayStr] } : t)
+              tasks.map((t) => t.id === task.id
+                ? { ...t, completedExceptions: [...(t.completedExceptions || []), todayStr], notificationId: null }
+                : t)
             );
           },
         },
@@ -336,8 +426,9 @@ const PlannerScreen: React.FC = () => {
           text: 'All upcoming',
           style: 'destructive',
           onPress: () => {
+            if (task.notificationId) void cancelReminderById(task.notificationId);
             saveTasks(
-              tasks.map((t) => t.id === task.id ? { ...t, isCompleted: true } : t)
+              tasks.map((t) => t.id === task.id ? { ...t, isCompleted: true, notificationId: null } : t)
             );
           },
         },
@@ -349,7 +440,7 @@ const PlannerScreen: React.FC = () => {
   const firstDayIndex = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => {
@@ -551,7 +642,7 @@ const PlannerScreen: React.FC = () => {
                   <View style={styles.rowItem}>
                       <Text style={styles.rowLabel}>Alert</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                          {[0, 5, 10, 30, 60].map(m => (
+                          {[0, 5, 10, 30].map(m => (
                               <TouchableOpacity key={m} onPress={() => setAlarmLead(m as AlarmLeadMinutes)} style={{marginLeft: 10, backgroundColor: alarmLead === m ? PRIMARY_COLOR : '#E5E5EA', borderRadius: 6, padding: 4}}>
                                   <Text style={{color: alarmLead === m ? '#fff' : '#000', fontSize: 12}}>
                                       {m === 0 ? 'None' : `${m}m`}
@@ -565,21 +656,51 @@ const PlannerScreen: React.FC = () => {
                       <>
                           <View style={styles.divider} />
                           <View style={styles.rowItem}>
-                              <Text style={styles.rowLabel}>Sound</Text>
-                              <View style={{flexDirection:'row'}}>
-                                  {(['sound', 'vibrate', 'silent'] as AlarmMode[]).map(m => (
-                                      <TouchableOpacity key={m} onPress={() => setAlarmMode(m)} style={{marginLeft: 12}}>
+                                <Text style={styles.rowLabel}>Alert mode</Text>
+                                <View style={{flexDirection:'row', alignItems: 'center'}}>
+                                  {((Platform.OS === 'android' ? ['sound', 'vibrate', 'silent'] : ['sound', 'silent']) as AlarmMode[]).map(m => (
+                                    <TouchableOpacity
+                                      key={m}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`${m} alert`}
+                                      accessibilityState={{ selected: alarmMode === m }}
+                                      onPress={() => setAlarmMode(m)}
+                                      style={{marginLeft: 10, alignItems: 'center', minWidth: 42}}
+                                    >
                                           <Ionicons 
                                               name={m === 'sound' ? 'musical-note' : m === 'vibrate' ? 'phone-portrait' : 'notifications-off'} 
                                               size={20} 
                                               color={alarmMode === m ? PRIMARY_COLOR : '#C7C7CC'} 
                                           />
+                                      <Text style={{fontSize: 10, color: alarmMode === m ? PRIMARY_COLOR : '#8E8E93', textTransform: 'capitalize'}}>{m}</Text>
                                       </TouchableOpacity>
                                   ))}
                               </View>
                           </View>
                       </>
                   )}
+                  {Platform.OS === 'android' && (
+                    <>
+                      <View style={styles.divider} />
+                      <TouchableOpacity style={styles.rowItem} onPress={handleSetClockAlarm}>
+                        <Text style={styles.rowLabel}>Set alarm in Android Clock</Text>
+                        <Ionicons name="alarm-outline" size={21} color={PRIMARY_COLOR} />
+                      </TouchableOpacity>
+                      <Text style={{ color: '#8E8E93', fontSize: 12, paddingHorizontal: 16, paddingBottom: 12 }}>
+                        Clock asks you to confirm and supports today&apos;s time; Duper reminders handle future dates.
+                      </Text>
+                    </>
+                  )}
+              </View>
+
+              <View style={[styles.formGroup, { paddingLeft: 16 }]}>
+                <View style={[styles.rowItem, { paddingLeft: 0 }]}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={styles.rowLabel}>Add to phone Calendar</Text>
+                    <Text style={{ color: '#8E8E93', fontSize: 12, marginTop: 2 }}>Keep this task in sync when edited or deleted</Text>
+                  </View>
+                  <Switch value={syncToCalendar} onValueChange={setSyncToCalendar} />
+                </View>
               </View>
 
               <View style={styles.formGroup}>
@@ -642,7 +763,7 @@ const PlannerScreen: React.FC = () => {
           />
         )}
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 };
 
