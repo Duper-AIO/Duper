@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useState } from 'react';
@@ -22,19 +21,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useAppData } from '../src/context/AppDataContext';
-import { theme } from '../src/theme/theme';
+import { useAppData } from '../../src/context/AppDataContext';
+import { useAuth } from '../../src/context/AuthContext';
+import { getUserData, removeUserData, setUserData, userDataKeys } from '../../src/storage/userData';
+import { theme } from '../../src/theme/theme';
 
 // --- CONSTANTS & PATHS ---
-const PLANNER_KEY = 'plannerTasks_v3';
-const FOCUS_KEY = 'focus_of_day_v1';
-const WATER_KEY = 'water_tracker_v1';
-
-// @ts-ignore
-const DOC_DIR = FileSystem.documentDirectory;
-const EXPENSE_FILE = DOC_DIR + 'app_data_expenses_v5.json';
-const NOTES_FILE = DOC_DIR + 'app_data_notes_v12.json';
-
 // Helper to check dates
 const getLocalDateString = (dateObj = new Date()) => {
   const year = dateObj.getFullYear();
@@ -66,7 +58,7 @@ const occursOnDate = (task: any, targetDateStr: string): boolean => {
 export default function ProfileScreen() {
   const { data, updateProfile } = useAppData();
   const { profile, contact } = data; // Destructured contact for email
-  const router = useRouter();
+  const { session, signOut } = useAuth();
 
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [tempName, setTempName] = useState(profile.name);
@@ -80,7 +72,7 @@ export default function ProfileScreen() {
   // --- 1. LOAD STATS ---
   const loadStats = async () => {
     try {
-        const json = await AsyncStorage.getItem(PLANNER_KEY);
+        const json = await getUserData(userDataKeys.planner);
         if (json) {
             const allTasks = JSON.parse(json);
             
@@ -117,7 +109,7 @@ export default function ProfileScreen() {
                 focusHrs: Math.round(completedCount * 0.5)
             });
         }
-    } catch (e) { console.log('Error loading stats', e); }
+    } catch (error) { console.error('Error loading stats', error); }
   };
 
   useFocusEffect(useCallback(() => { loadStats(); }, []));
@@ -126,24 +118,13 @@ export default function ProfileScreen() {
   const handleBackup = async () => {
     setLoading(true);
     try {
-        // 1. Gather AsyncStorage Data
-        const plannerData = await AsyncStorage.getItem(PLANNER_KEY);
-        const focusData = await AsyncStorage.getItem(FOCUS_KEY);
-        const waterData = await AsyncStorage.getItem(WATER_KEY);
-
-        // 2. Gather FileSystem Data
-        let expensesData = null;
-        let notesData = null;
-
-        const expenseInfo = await FileSystem.getInfoAsync(EXPENSE_FILE);
-        if (expenseInfo.exists) {
-            expensesData = await FileSystem.readAsStringAsync(EXPENSE_FILE);
-        }
-
-        const notesInfo = await FileSystem.getInfoAsync(NOTES_FILE);
-        if (notesInfo.exists) {
-            notesData = await FileSystem.readAsStringAsync(NOTES_FILE);
-        }
+        const [plannerData, focusData, waterData, expensesData, notesData] = await Promise.all([
+          getUserData(userDataKeys.planner),
+          getUserData(userDataKeys.focus),
+          getUserData(userDataKeys.water),
+          getUserData(userDataKeys.expenses),
+          getUserData(userDataKeys.notes)
+        ]);
 
         // 3. Create Backup Object
         const backupObject = {
@@ -205,17 +186,20 @@ export default function ProfileScreen() {
         const { data } = backupObject;
 
         // 1. Restore AsyncStorage
-        if (data.planner) await AsyncStorage.setItem(PLANNER_KEY, JSON.stringify(data.planner));
-        if (data.focus) await AsyncStorage.setItem(FOCUS_KEY, data.focus);
-        if (data.water) await AsyncStorage.setItem(WATER_KEY, data.water);
-
-        // 2. Restore FileSystem
-        if (data.expenses) await FileSystem.writeAsStringAsync(EXPENSE_FILE, JSON.stringify(data.expenses));
-        if (data.notes) await FileSystem.writeAsStringAsync(NOTES_FILE, JSON.stringify(data.notes));
+        const restoredValues: [string, string | null][] = [
+          [userDataKeys.planner, data.planner ? JSON.stringify(data.planner) : null],
+          [userDataKeys.focus, data.focus || null],
+          [userDataKeys.water, data.water || null],
+          [userDataKeys.expenses, data.expenses ? JSON.stringify(data.expenses) : null],
+          [userDataKeys.notes, data.notes ? JSON.stringify(data.notes) : null]
+        ];
+        await Promise.all(restoredValues.map(([key, value]) =>
+          value === null ? removeUserData([key]) : setUserData(key, value)
+        ));
 
         // 3. Restore Profile Text
         if (data.profile) {
-            updateProfile({ ...profile, name: data.profile.name, role: data.profile.role });
+            await updateProfile({ ...profile, name: data.profile.name, role: data.profile.role });
         }
 
         Alert.alert('Success', 'Data restored successfully! Please restart the app or pull to refresh other tabs.', [
@@ -232,13 +216,18 @@ export default function ProfileScreen() {
 
   const clearAllData = async () => {
       try {
-          await AsyncStorage.multiRemove([PLANNER_KEY, FOCUS_KEY, WATER_KEY]);
-          await FileSystem.deleteAsync(EXPENSE_FILE, { idempotent: true });
-          await FileSystem.deleteAsync(NOTES_FILE, { idempotent: true });
+          await removeUserData([
+            userDataKeys.planner,
+            userDataKeys.focus,
+            userDataKeys.water,
+            userDataKeys.expenses,
+            userDataKeys.notes
+          ]);
           Alert.alert('Reset Complete', 'All data has been cleared.');
           loadStats(); // Reset stats to 0
-      } catch(e) {
-          Alert.alert('Error', 'Could not clear all data');
+      } catch(error) {
+          Alert.alert('Error', 'Could not clear all data. Check your connection and try again.');
+          console.error('Could not clear user data:', error);
       }
   };
 
@@ -252,16 +241,21 @@ export default function ProfileScreen() {
         quality: 0.5,
       });
       if (!result.canceled) {
-        updateProfile({ ...profile, avatarUri: result.assets[0].uri });
+        await updateProfile({ ...profile, avatarUri: result.assets[0].uri });
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Could not pick image');
     }
   };
 
-  const saveProfile = () => {
-    updateProfile({ ...profile, name: tempName, role: tempRole });
-    setEditModalVisible(false);
+  const saveProfile = async () => {
+    try {
+      await updateProfile({ ...profile, name: tempName, role: tempRole });
+      setEditModalVisible(false);
+    } catch (error) {
+      Alert.alert('Error', 'Could not save your profile. Check your connection and try again.');
+      console.error('Could not save profile:', error);
+    }
   };
 
   return (
@@ -327,6 +321,27 @@ export default function ProfileScreen() {
         {/* DATA MANAGEMENT */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Data & Storage</Text>
+          <SettingRow
+            icon="mail-outline"
+            label={session?.user.email || 'Signed in'}
+            subLabel="Supabase account"
+            color="#0EA5E9"
+          />
+          <SettingRow
+            icon="log-out-outline"
+            label="Sign out"
+            color="#EF4444"
+            isDestructive
+            onPress={() => Alert.alert('Sign out', 'Your cloud data will remain available when you sign in again.', [
+              { text: 'Cancel' },
+              { text: 'Sign out', style: 'destructive', onPress: () => {
+                void signOut().catch((error) => {
+                  Alert.alert('Sign out failed', 'Please try again.');
+                  console.error('Could not sign out:', error);
+                });
+              } }
+            ])}
+          />
           <SettingRow 
             icon="cloud-upload-outline" 
             label={loading ? "Processing..." : "Backup Data"} 

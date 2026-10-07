@@ -1,123 +1,32 @@
-// app/_layout.tsx
-import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Stack } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import TaskAlarmHandler from '../src/components/TaskAlarmHandler';
-import { AppDataProvider, useAppData } from '../src/context/AppDataContext';
-import { theme } from '../src/theme/theme';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
-function InnerLayout() {
-  const { loading } = useAppData();
-  const insets = useSafeAreaInsets();
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </View>
-    );
-  }
+function RootNavigator() {
+  const { error, loading, session } = useAuth();
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: theme.colors.card,
-          borderTopColor: theme.colors.border,
-          height: 60 + insets.bottom,
-          paddingBottom: Math.max(insets.bottom, 8),
-          paddingTop: 8
-        },
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.textSecondary,
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '600',
-          marginTop: 2
-        }
-      }}
-    >
-      {/* 1. Home */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
-          )
-        }}
-      />
-
-      {/* 2. Planner (FIXED: Name changed from 'PlannerScreen' to 'planner' to match file) */}
-      <Tabs.Screen
-        name="planner"
-        options={{
-          title: 'Planner',
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={24} color={color} />
-          )
-        }}
-      />
-
-      {/* 3. Notes */}
-      <Tabs.Screen
-        name="notes"
-        options={{
-          title: 'Notes',
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'document-text' : 'document-text-outline'} size={24} color={color} />
-          )
-        }}
-      />
-
-      {/* 4. Expenses */}
-      <Tabs.Screen
-        name="expenses"
-        options={{
-          title: 'Expenses',
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'wallet' : 'wallet-outline'} size={24} color={color} />
-          )
-        }}
-      />
-
-      {/* 5. Portfolio (Profile) */}
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'person-circle' : 'person-circle-outline'} size={24} color={color} />
-          )
-        }}
-      />
-
-      {/* --- HIDDEN TABS (Routes that exist but shouldn't show in the bottom bar) --- */}
-    
-    </Tabs>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Protected guard={loading || !session}>
+        <Stack.Screen name="sign-in" />
+      </Stack.Protected>
+      <Stack.Protected guard={!loading && Boolean(session) && Boolean(error)}>
+        <Stack.Screen name="sync-error" />
+      </Stack.Protected>
+      <Stack.Protected guard={!loading && Boolean(session) && !error}>
+        <Stack.Screen name="(tabs)" />
+      </Stack.Protected>
+    </Stack>
   );
 }
 
 export default function RootLayout() {
   return (
-    <AppDataProvider>
-      <SafeAreaProvider>
-        <TaskAlarmHandler>
-          <InnerLayout />
-        </TaskAlarmHandler>
-      </SafeAreaProvider>
-    </AppDataProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-    alignItems: 'center',
-    justifyContent: 'center'
-  }
-});

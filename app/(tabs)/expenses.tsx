@@ -1,6 +1,6 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -21,7 +21,8 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { theme } from '../src/theme/theme';
+import { theme } from '../../src/theme/theme';
+import { getUserData, setUserData, userDataKeys } from '../../src/storage/userData';
 
 // ==========================================
 // 1. TYPES & DATA
@@ -51,7 +52,6 @@ type ExpenseDataStore = {
 // --- PERSISTENCE CONFIGURATION ---
 // @ts-ignore
 const DOC_DIR = FileSystem.documentDirectory || '';
-const DATA_FILE = DOC_DIR + 'expenses_data_store.json';
 
 const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Business', 'Investment', 'Gift', 'General'];
 const EXPENSE_CATEGORIES = ['Food', 'Transport', 'Rent', 'Shopping', 'Health', 'Bills', 'Entertainment', 'General'];
@@ -80,9 +80,8 @@ const formatDate = (isoString: string) => {
 // --- STORAGE HELPERS ---
 
 const saveData = async (data: ExpenseDataStore) => {
-  if (!DOC_DIR) return;
   try {
-    await FileSystem.writeAsStringAsync(DATA_FILE, JSON.stringify(data));
+    await setUserData(userDataKeys.expenses, JSON.stringify(data));
     // console.log('Data saved successfully');
   } catch (error) {
     console.error('Error saving expenses:', error);
@@ -92,13 +91,9 @@ const saveData = async (data: ExpenseDataStore) => {
 const loadData = async (): Promise<ExpenseDataStore> => {
   const defaultData: ExpenseDataStore = { transactions: [], currencySymbol: '₹', monthlyBudget: 10000 };
   
-  if (!DOC_DIR) return defaultData;
-  
   try {
-    const info = await FileSystem.getInfoAsync(DATA_FILE);
-    if (!info.exists) return defaultData;
-    
-    const content = await FileSystem.readAsStringAsync(DATA_FILE);
+    const content = await getUserData(userDataKeys.expenses);
+    if (!content) return defaultData;
     const parsed = JSON.parse(content);
 
     return {
@@ -107,7 +102,7 @@ const loadData = async (): Promise<ExpenseDataStore> => {
        monthlyBudget: parsed.monthlyBudget || 10000
     };
   } catch (error) {
-    console.log('Load Error', error);
+    console.error('Could not load expenses:', error);
     return defaultData;
   }
 };

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as Network from 'expo-network';
@@ -22,15 +21,19 @@ import {
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAppData } from '../src/context/AppDataContext';
+import { useAppData } from '../../src/context/AppDataContext';
+import {
+  cacheUserData,
+  getActiveUserId,
+  getUserData,
+  setUserData,
+  syncUserDataItem,
+  userDataKeys
+} from '../../src/storage/userData';
 
 // ==========================================
 // 1. CONFIG & SHARED KEYS
 // ==========================================
-const PLANNER_KEY = 'plannerTasks_v3';
-const FOCUS_KEY = 'focus_of_day_v1';
-const WATER_KEY = 'water_tracker_v1';
-
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 const THEME = {
@@ -148,6 +151,9 @@ const HomeScreen: React.FC = () => {
   // Real-time Data
   const [todayTasks, setTodayTasks] = useState<any[]>([]);
   const [focusText, setFocusText] = useState('');
+  const focusSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingFocusText = useRef<string | null>(null);
+  const focusUserId = useRef<string | null>(null);
   
   // Water Tracker
   const [waterCount, setWaterCount] = useState(0);
@@ -186,7 +192,7 @@ const HomeScreen: React.FC = () => {
       });
 
       if (!result.canceled) {
-        updateProfile({ ...profile, avatarUri: result.assets[0].uri });
+        await updateProfile({ ...profile, avatarUri: result.assets[0].uri });
       }
     } catch (error) {
       console.log('Error picking image:', error);
@@ -232,7 +238,7 @@ const HomeScreen: React.FC = () => {
   const loadData = async () => {
     try {
       // TASKS & STREAK
-      const tasksJson = await AsyncStorage.getItem(PLANNER_KEY);
+      const tasksJson = await getUserData(userDataKeys.planner);
       if (tasksJson) {
         const allTasks = JSON.parse(tasksJson);
         const todayStr = getLocalDateString(new Date());
@@ -290,12 +296,12 @@ const HomeScreen: React.FC = () => {
       }
 
       // FOCUS
-      const savedFocus = await AsyncStorage.getItem(FOCUS_KEY);
+      const savedFocus = await getUserData(userDataKeys.focus);
       if (savedFocus) setFocusText(savedFocus);
 
       // WATER
       const todayStr = getLocalDateString(new Date());
-      const savedWater = await AsyncStorage.getItem(WATER_KEY);
+      const savedWater = await getUserData(userDataKeys.water);
       if (savedWater) {
           const parsedWater = JSON.parse(savedWater);
           if (parsedWater.date === todayStr) {
@@ -309,19 +315,47 @@ const HomeScreen: React.FC = () => {
       const randomIndex = Math.floor(Math.random() * QUOTES.length);
       setQuote(QUOTES[randomIndex]);
 
-    } catch (e) {}
+    } catch (error) {
+      console.error('Could not load dashboard data:', error);
+    }
   };
 
-  const saveFocus = async (text: string) => {
+  const saveFocus = (text: string) => {
       setFocusText(text);
-      try { await AsyncStorage.setItem(FOCUS_KEY, text); } catch(e) {}
+      pendingFocusText.current = text;
+      focusUserId.current = getActiveUserId();
+      void cacheUserData(userDataKeys.focus, text).catch((error) => {
+          console.error('Could not cache focus:', error);
+      });
+      if (focusSaveTimer.current) clearTimeout(focusSaveTimer.current);
+      focusSaveTimer.current = setTimeout(() => {
+          focusSaveTimer.current = null;
+          pendingFocusText.current = null;
+          const userId = focusUserId.current;
+          focusUserId.current = null;
+          void syncUserDataItem(userDataKeys.focus, text, userId || undefined).catch((error) => {
+              console.error('Could not sync focus:', error);
+          });
+      }, 400);
   };
+
+  useEffect(() => () => {
+      if (focusSaveTimer.current) clearTimeout(focusSaveTimer.current);
+      const pendingText = pendingFocusText.current;
+      if (pendingText !== null) {
+          void syncUserDataItem(userDataKeys.focus, pendingText, focusUserId.current || undefined).catch((error) => {
+              console.error('Could not sync focus:', error);
+          });
+      }
+  }, []);
 
   const addWater = async () => {
       const newCount = waterCount >= WATER_GOAL ? 0 : waterCount + 1;
       setWaterCount(newCount);
       const data = { date: getLocalDateString(new Date()), count: newCount };
-      try { await AsyncStorage.setItem(WATER_KEY, JSON.stringify(data)); } catch(e) {}
+      try { await setUserData(userDataKeys.water, JSON.stringify(data)); } catch (error) {
+          console.error('Could not save water tracker:', error);
+      }
   };
 
   // --- UPDATED INTERVAL LOGIC ---
@@ -386,7 +420,7 @@ const HomeScreen: React.FC = () => {
         <View style={styles.headerRow}>
            <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
                <Image 
-                 source={require('../assets/images/android-icon-foreground.png')}
+                 source={require('../../assets/images/android-icon-foreground.png')}
                  style={styles.logoImage}
                  resizeMode="contain"
                />
@@ -499,7 +533,7 @@ const HomeScreen: React.FC = () => {
 
         {/* --- 6. DAILY QUOTE --- */}
         <View style={styles.quoteContainer}>
-            <Text style={styles.quoteText}>"{quote}"</Text>
+            <Text style={styles.quoteText}>&quot;{quote}&quot;</Text>
         </View>
 
         {/* --- 7. UP NEXT TASKS --- */}
@@ -535,7 +569,7 @@ const HomeScreen: React.FC = () => {
         ) : (
             <View style={styles.emptyBox}>
                 <Ionicons name="checkmark-circle-outline" size={40} color="#CBD5E1" />
-                <Text style={styles.emptyText}>You're all caught up!</Text>
+                <Text style={styles.emptyText}>You&apos;re all caught up!</Text>
                 <Text style={styles.emptySub}>Enjoy your free time.</Text>
             </View>
         )}
@@ -575,7 +609,11 @@ const HomeScreen: React.FC = () => {
                     </View>
                 </View>
                 
-                <TouchableOpacity onPress={() => { updateProfile({...profile, name, role}); setEditVisible(false) }} style={styles.btnSave}>
+                <TouchableOpacity onPress={() => {
+                  void updateProfile({ ...profile, name, role })
+                    .then(() => setEditVisible(false))
+                    .catch((error) => console.error('Could not save profile:', error));
+                }} style={styles.btnSave}>
                     <Text style={styles.btnTextWhite}>Save Changes</Text>
                 </TouchableOpacity>
             </View>

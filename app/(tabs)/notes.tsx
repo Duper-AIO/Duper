@@ -1,7 +1,6 @@
 import { Feather, Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as Clipboard from 'expo-clipboard';
-import * as FileSystem from 'expo-file-system';
 import * as Linking from 'expo-linking';
 import * as Print from 'expo-print';
 import { useShareIntent } from 'expo-share-intent';
@@ -27,7 +26,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { theme } from '../src/theme/theme';
+import { theme } from '../../src/theme/theme';
+import { getUserData, setUserData, userDataKeys } from '../../src/storage/userData';
 
 // ==========================================
 // 1. TYPES & DATA STRUCTURES
@@ -70,9 +70,6 @@ type AppDataStore = {
 };
 
 // @ts-ignore
-const docDir = FileSystem.documentDirectory || ''; 
-const DATA_FILE_URI = docDir + 'app_data_notes_v12.json';
-
 // ==========================================
 // 2. HELPER FUNCTIONS & STORAGE
 // ==========================================
@@ -101,22 +98,19 @@ const calculateNextOccurrence = (currentDateStr: string, type: RecurrenceType): 
 };
 
 const saveToJSON = async (data: AppDataStore) => {
-  if (!docDir) return;
   try {
-    await FileSystem.writeAsStringAsync(DATA_FILE_URI, JSON.stringify(data), { encoding: 'utf8' });
+    await setUserData(userDataKeys.notes, JSON.stringify(data));
   } catch (error) {
     console.error('Error saving data:', error);
   }
 };
 
 const loadFromJSON = async (): Promise<AppDataStore> => {
-  if (!docDir) return { notes: [], links: [], voiceNotes: [] };
   try {
-    const info = await FileSystem.getInfoAsync(DATA_FILE_URI);
-    if (!info.exists) return { notes: [], links: [], voiceNotes: [] };
-    const content = await FileSystem.readAsStringAsync(DATA_FILE_URI, { encoding: 'utf8' });
-    return JSON.parse(content);
+    const content = await getUserData(userDataKeys.notes);
+    return content ? JSON.parse(content) : { notes: [], links: [], voiceNotes: [] };
   } catch (error) {
+    console.error('Could not load notes:', error);
     return { notes: [], links: [], voiceNotes: [] };
   }
 };
