@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -31,6 +30,7 @@ import { deleteTaskCalendarEvent, saveTaskToCalendar } from '../utils/calendarSy
 import { openClockAlarm } from '../utils/clockAlarm';
 import { PLANNER_TASKS_STORAGE_KEY } from '../widgets/taskData';
 import { refreshPlannerWidgets } from '../widgets/widgetRuntime';
+import { getUserData, setUserData } from '../storage/userData';
 
 // --- Configuration ---
 const STORAGE_KEY = PLANNER_TASKS_STORAGE_KEY;
@@ -188,7 +188,7 @@ const PlannerScreen: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        const stored = await getUserData(STORAGE_KEY);
         if (stored) setTasks(JSON.parse(stored));
       } catch (e) { console.log('Load error', e); }
     })();
@@ -196,7 +196,7 @@ const PlannerScreen: React.FC = () => {
 
   const saveTasks = async (next: Task[]) => {
     setTasks(next);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await setUserData(STORAGE_KEY, JSON.stringify(next));
     void refreshPlannerWidgets().catch(error => console.warn('Could not refresh planner widgets', error));
   };
 

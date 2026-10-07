@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import React, {
   createContext,
@@ -9,36 +9,46 @@ import React, {
 } from 'react';
 // Removing 'Project' from imports since we are cleaning up portfolio features
 import { AppData, defaultData, Profile } from '../data/defaultData';
+import { useAuth } from './AuthContext';
 import { loadAppData, saveAppData } from '../storage/storage';
 
 type AppDataContextType = {
   data: AppData;
   loading: boolean;
-  updateProfile: (profile: Profile) => void;
+  updateProfile: (profile: Profile) => Promise<void>;
   pickProfileImage: () => Promise<void>;
 };
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
 
 export const AppDataProvider = ({ children }: { children: ReactNode }) => {
+  const { session } = useAuth();
   const [data, setData] = useState<AppData>(defaultData);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
-      const stored = await loadAppData();
-      if (stored) setData(stored);
-      setLoading(false);
-    })();
-  }, []);
+    let mounted = true;
+    const load = async () => {
+      try {
+        const stored = await loadAppData();
+        if (mounted && stored) setData(stored);
+      } catch (error) {
+        console.error('Could not load profile data from Supabase:', error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    if (session) void load();
+    return () => { mounted = false; };
+  }, [session]);
 
-  const persist = (next: AppData) => {
+  const persist = async (next: AppData) => {
     setData(next);
-    saveAppData(next);
+    await saveAppData(next);
   };
 
-  const updateProfile = (profile: Profile) => {
-    persist({ ...data, profile });
+  const updateProfile = async (profile: Profile) => {
+    await persist({ ...data, profile });
   };
 
   const ensurePermissions = async () => {
@@ -88,7 +98,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     if (result.canceled || !result.assets?.length) return;
 
     const localUri = await copyToAppStorage(result.assets[0].uri);
-    updateProfile({ ...data.profile, avatarUri: localUri });
+    await updateProfile({ ...data.profile, avatarUri: localUri });
   };
 
   return (

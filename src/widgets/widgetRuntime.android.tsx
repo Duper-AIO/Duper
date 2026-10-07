@@ -3,6 +3,7 @@ import React from 'react';
 import { requestWidgetUpdate, type WidgetTaskHandlerProps } from 'react-native-android-widget';
 import { MonthWidget, TasksWidget, TodayAndTasksWidget } from './PlannerWidgets';
 import { PLANNER_TASKS_STORAGE_KEY, toggleWidgetTask, WidgetTask } from './taskData';
+import { saveWidgetPlannerData } from '../storage/userData';
 
 const WIDGET_NAMES = ['PlannerTasks', 'PlannerMonth', 'PlannerToday'] as const;
 
@@ -36,7 +37,7 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
     const [year, month, day] = taskDate.split('-').map(Number);
     if (taskId && year && month && day) {
       tasks = toggleWidgetTask(tasks, taskId, new Date(year, month - 1, day));
-      await AsyncStorage.setItem(PLANNER_TASKS_STORAGE_KEY, JSON.stringify(tasks));
+      await saveWidgetPlannerData(JSON.stringify(tasks));
       await refreshPlannerWidgets();
       return;
     }
