@@ -73,7 +73,7 @@ If you have any questions, feedback, or collaboration ideas, feel free to reach 
 
 * **Email:** [dhiraj7kr@gmail.com]
 * **LinkedIn:** [Linkedin](https://www.linkedin.com/in/dhiraj7kr/)]
-* **GitHub:** [dhiraj7kr](https://github.com/dhirajkrjp)
+* **GitHub:** [dhirajkrjp](https://github.com/dhirajkrjp)
 
 ---
 
