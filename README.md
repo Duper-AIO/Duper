@@ -1,6 +1,6 @@
 # Duper AIO (All-In-One)
 
-**Duper AIO** is a robust personal management application designed to bring your productivity, health, finance, and security into one seamless ecosystem. Whether you are tracking daily habits, managing finances, or securing private notes, Duper AIO handles it all with an intuitive and sleek interface.
+**Duper AIO** is a robust personal management application designed to bring your productivity, health, finance, and security into one seamless ecosystem. Whether you are tracking daily habits, managing finances, organizing notes, or securing sensitive data, Duper brings everything together.
 
 ## 📸 App Gallery
 
@@ -23,16 +23,16 @@
 
 ## Supabase setup
 
-Duper uses Supabase email/password authentication and a private, per-user database table for profile, planner, focus, water, notes, and expense data. Existing local data is imported the first time an account is connected on a device. The Android planner widget continues to use a local cache.
+Duper uses Supabase email/password authentication and a private, per-user database table for profile, planner, focus, water, notes, and expense data. Existing local data is imported the first time an account is created.
 
 1. Copy `.env.example` to `.env` and fill in the Supabase project URL and **publishable** key. `.env` is ignored by Git.
-2. In the Supabase SQL Editor, run [`supabase/schema.sql`](./supabase/schema.sql) to create the data table, private media bucket, and row-level security policies. Re-run it if you previously applied the earlier version; it is safe to run repeatedly.
+2. In the Supabase SQL Editor, run [`supabase/schema.sql`](./supabase/schema.sql) to create the data table, private media bucket, and row-level security policies. Re-run it if you previously applied this file.
 3. Enable Email authentication in Supabase. If email confirmation is enabled, confirm the address before signing in.
 4. Restart Expo after changing environment variables: `npm run start`.
 
-For Expo builds and GitHub Actions, set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in the build environment instead of committing `.env`. Expo embeds `EXPO_PUBLIC_` values in the client bundle; only use the Supabase publishable key here. Never use a `service_role` key or database password in the app.
+For Expo builds and GitHub Actions, set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in the build environment instead of committing `.env`. Expo embeds `EXPO_PUBLIC_` values in the JS bundle.
 
-Text and structured app records, profile pictures, and voice recordings sync through the private `duper-media` bucket. Each account can access only its own records and uploaded files. Audio uploads are limited to 50 MB per file.
+Text and structured app records, profile pictures, and voice recordings sync through the private `duper-media` bucket. Each account can access only its own records and uploaded files. Audio uploads are transcoded to MP3 for reduced bandwidth.
 
 ### 🏠 Comprehensive Dashboard & Health Hub
 The **Home Page** acts as your central command centre, offering real-time updates on your environment and personal progress.
@@ -78,4 +78,4 @@ If you have any questions, feedback, or collaboration ideas, feel free to reach 
 ---
 
 ### 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/anextsar/AppPhoto/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/dhirajkrjp/Duper/issues).
