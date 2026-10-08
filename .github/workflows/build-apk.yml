@@ -1,10 +1,10 @@
 name: Build Android APK (EAS)
 
 on:
-  workflow_dispatch: # Allows you to manually trigger the build from GitHub
+  workflow_dispatch:
   push:
     branches:
-      - main # Automatically runs every time you push code to the main branch
+      - main
 
 jobs:
   build:
@@ -18,17 +18,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: package-lock.json
 
-      - name: 📱 Setup EAS CLI with Expo Token
+      - name: 📱 Setup EAS CLI
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: 📦 Install project dependencies
-        run: npm ci
+        run: npm install
 
       - name: 🚀 Trigger EAS APK Build
         run: eas build -p android --profile preview --non-interactive
