@@ -5,7 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     Alert,
     Image,
@@ -68,6 +68,31 @@ export default function ProfileScreen() {
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void getUserData(userDataKeys.preferences)
+      .then((json) => {
+        if (!mounted) return;
+        if (json) {
+          const saved = JSON.parse(json) as { notificationsEnabled?: boolean; darkMode?: boolean };
+          if (typeof saved.notificationsEnabled === 'boolean') setNotificationsEnabled(saved.notificationsEnabled);
+          if (typeof saved.darkMode === 'boolean') setDarkMode(saved.darkMode);
+        }
+      })
+      .catch((error) => console.error('Could not load preferences:', error))
+      .finally(() => {
+        if (mounted) setPreferencesLoaded(true);
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    void setUserData(userDataKeys.preferences, JSON.stringify({ notificationsEnabled, darkMode }))
+      .catch((error) => console.error('Could not sync preferences:', error));
+  }, [darkMode, notificationsEnabled, preferencesLoaded]);
 
   // --- 1. LOAD STATS ---
   const loadStats = async () => {
@@ -118,12 +143,13 @@ export default function ProfileScreen() {
   const handleBackup = async () => {
     setLoading(true);
     try {
-        const [plannerData, focusData, waterData, expensesData, notesData] = await Promise.all([
+        const [plannerData, focusData, waterData, expensesData, notesData, preferencesData] = await Promise.all([
           getUserData(userDataKeys.planner),
           getUserData(userDataKeys.focus),
           getUserData(userDataKeys.water),
           getUserData(userDataKeys.expenses),
-          getUserData(userDataKeys.notes)
+          getUserData(userDataKeys.notes),
+          getUserData(userDataKeys.preferences)
         ]);
 
         // 3. Create Backup Object
@@ -139,6 +165,7 @@ export default function ProfileScreen() {
                 water: waterData,
                 expenses: expensesData ? JSON.parse(expensesData) : null,
                 notes: notesData ? JSON.parse(notesData) : null,
+                preferences: preferencesData ? JSON.parse(preferencesData) : null,
                 profile: { name: profile.name, role: profile.role } // We don't backup image files
             }
         };
@@ -191,7 +218,8 @@ export default function ProfileScreen() {
           [userDataKeys.focus, data.focus || null],
           [userDataKeys.water, data.water || null],
           [userDataKeys.expenses, data.expenses ? JSON.stringify(data.expenses) : null],
-          [userDataKeys.notes, data.notes ? JSON.stringify(data.notes) : null]
+          [userDataKeys.notes, data.notes ? JSON.stringify(data.notes) : null],
+          [userDataKeys.preferences, data.preferences ? JSON.stringify(data.preferences) : null]
         ];
         await Promise.all(restoredValues.map(([key, value]) =>
           value === null ? removeUserData([key]) : setUserData(key, value)
@@ -221,7 +249,8 @@ export default function ProfileScreen() {
             userDataKeys.focus,
             userDataKeys.water,
             userDataKeys.expenses,
-            userDataKeys.notes
+            userDataKeys.notes,
+            userDataKeys.preferences
           ]);
           Alert.alert('Reset Complete', 'All data has been cleared.');
           loadStats(); // Reset stats to 0

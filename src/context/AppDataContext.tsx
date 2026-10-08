@@ -43,8 +43,8 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   }, [session]);
 
   const persist = async (next: AppData) => {
-    setData(next);
-    await saveAppData(next);
+    const saved = await saveAppData(next);
+    setData(saved);
   };
 
   const updateProfile = async (profile: Profile) => {

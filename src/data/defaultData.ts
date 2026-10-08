@@ -10,7 +10,8 @@ export type Profile = {
   name: string;
   role: string;
   tagline: string;
-  avatarUri?: string; // local image path
+  avatarUri?: string;
+  avatarStoragePath?: string;
   social: SocialLinks;
   location: string;
   phone: string;
