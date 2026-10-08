@@ -2,7 +2,7 @@
   "expo": {
     "name": "Duper",
     "slug": "duper-productivity",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/duper-logo.png",
     "scheme": "duper",
@@ -27,7 +27,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "versionCode": 3,
+      "versionCode": 4,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "com.android.alarm.permission.SET_ALARM",
