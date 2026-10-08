@@ -32,6 +32,8 @@ Duper uses Supabase email/password authentication and a private, per-user databa
 
 For Expo builds and GitHub Actions, set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in the build environment instead of committing `.env`. Expo embeds `EXPO_PUBLIC_` values in the client bundle; only use the Supabase publishable key here. Never use a `service_role` key or database password in the app.
 
+On Android 14 and later, enable **Full-screen reminders** from the Profile > Preferences section to allow task alarms to open over the lock screen. Android may otherwise show the normal notification instead.
+
 Text and structured app records, profile pictures, and voice recordings sync through the private `duper-media` bucket. Each account can access only its own records and uploaded files. Audio uploads are limited to 50 MB per file.
 
 ### 🏠 Comprehensive Dashboard & Health Hub

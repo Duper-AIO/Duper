@@ -3,7 +3,6 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import TaskAlarmHandler from '../../src/components/TaskAlarmHandler';
 import { AppDataProvider, useAppData } from '../../src/context/AppDataContext';
 import { theme } from '../../src/theme/theme';
 
@@ -91,9 +90,7 @@ function InnerLayout() {
 export default function TabsLayout() {
   return (
     <AppDataProvider>
-      <TaskAlarmHandler>
-        <InnerLayout />
-      </TaskAlarmHandler>
+      <InnerLayout />
     </AppDataProvider>
   );
 }

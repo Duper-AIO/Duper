@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import React from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import TaskAlarmHandler from '../src/components/TaskAlarmHandler';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
 function RootNavigator() {
@@ -25,7 +26,9 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <RootNavigator />
+        <TaskAlarmHandler>
+          <RootNavigator />
+        </TaskAlarmHandler>
       </AuthProvider>
     </SafeAreaProvider>
   );
