@@ -2,7 +2,7 @@
   "expo": {
     "name": "Duper",
     "slug": "duper-productivity",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/duper-logo.png",
     "scheme": "duper",
@@ -27,7 +27,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "versionCode": 2,
+      "versionCode": 3,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "com.android.alarm.permission.SET_ALARM",
@@ -140,7 +140,9 @@
         {
           "microphonePermission": "Allow Duper to record voice notes."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
