@@ -17,8 +17,8 @@ jobs:
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: 'npm'
+          node-version: 20
+          cache: 'yarn'
 
       - name: 📱 Setup EAS CLI with Expo Token
         uses: expo/expo-github-action@v8
