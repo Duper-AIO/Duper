@@ -26,13 +26,13 @@
 Duper uses Supabase email/password authentication and a private, per-user database table for profile, planner, focus, water, notes, and expense data. Existing local data is imported the first time an account is connected on a device. The Android planner widget continues to use a local cache.
 
 1. Copy `.env.example` to `.env` and fill in the Supabase project URL and **publishable** key. `.env` is ignored by Git.
-2. In the Supabase SQL Editor, run [`supabase/schema.sql`](./supabase/schema.sql) to create the data table and row-level security policies.
+2. In the Supabase SQL Editor, run [`supabase/schema.sql`](./supabase/schema.sql) to create the data table, private media bucket, and row-level security policies. Re-run it if you previously applied the earlier version; it is safe to run repeatedly.
 3. Enable Email authentication in Supabase. If email confirmation is enabled, confirm the address before signing in.
 4. Restart Expo after changing environment variables: `npm run start`.
 
 For Expo builds and GitHub Actions, set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in the build environment instead of committing `.env`. Expo embeds `EXPO_PUBLIC_` values in the client bundle; only use the Supabase publishable key here. Never use a `service_role` key or database password in the app.
 
-Text and structured app records sync across devices. Profile pictures and recorded audio remain local files on the device and are not uploaded.
+Text and structured app records, profile pictures, and voice recordings sync through the private `duper-media` bucket. Each account can access only its own records and uploaded files. Audio uploads are limited to 50 MB per file.
 
 ### 🏠 Comprehensive Dashboard & Health Hub
 The **Home Page** acts as your central command centre, offering real-time updates on your environment and personal progress.
@@ -73,7 +73,7 @@ If you have any questions, feedback, or collaboration ideas, feel free to reach 
 
 * **Email:** [dhiraj7kr@gmail.com]
 * **LinkedIn:** [Linkedin](https://www.linkedin.com/in/dhiraj7kr/)]
-* **GitHub:** [dhiraj7kr](https://github.com/dhiraj7kr)
+* **GitHub:** [dhiraj7kr](https://github.com/dhirajkrjp)
 
 ---
 

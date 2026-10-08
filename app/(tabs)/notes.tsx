@@ -5,7 +5,7 @@ import * as Linking from 'expo-linking';
 import * as Print from 'expo-print';
 import { useShareIntent } from 'expo-share-intent';
 import * as Sharing from 'expo-sharing';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Alert,
     Animated,
@@ -28,6 +28,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '../../src/theme/theme';
 import { getUserData, setUserData, userDataKeys } from '../../src/storage/userData';
+import { deleteUserMedia, prepareVoiceMedia } from '../../src/storage/media';
 
 // ==========================================
 // 1. TYPES & DATA STRUCTURES
@@ -56,6 +57,7 @@ type LinkItem = {
 type VoiceNote = {
   id: string;
   uri: string;
+  storagePath?: string;
   name: string;
   createdAt: string;
   durationSeconds: number;
@@ -69,7 +71,6 @@ type AppDataStore = {
   voiceNotes: VoiceNote[];
 };
 
-// @ts-ignore
 // ==========================================
 // 2. HELPER FUNCTIONS & STORAGE
 // ==========================================
@@ -99,20 +100,23 @@ const calculateNextOccurrence = (currentDateStr: string, type: RecurrenceType): 
 
 const saveToJSON = async (data: AppDataStore) => {
   try {
-    await setUserData(userDataKeys.notes, JSON.stringify(data));
+    const { storedNotes } = await prepareVoiceMedia(data.voiceNotes);
+    await setUserData(userDataKeys.notes, JSON.stringify({ ...data, voiceNotes: storedNotes }));
   } catch (error) {
     console.error('Error saving data:', error);
+    Alert.alert('Save failed', 'Your notes or recordings could not be synced. Check your connection and try again.');
   }
 };
 
 const loadFromJSON = async (): Promise<AppDataStore> => {
-  try {
-    const content = await getUserData(userDataKeys.notes);
-    return content ? JSON.parse(content) : { notes: [], links: [], voiceNotes: [] };
-  } catch (error) {
-    console.error('Could not load notes:', error);
-    return { notes: [], links: [], voiceNotes: [] };
+  const content = await getUserData(userDataKeys.notes);
+  if (!content) return { notes: [], links: [], voiceNotes: [] };
+  const parsed = JSON.parse(content) as AppDataStore;
+  const { displayNotes, storedNotes } = await prepareVoiceMedia(parsed.voiceNotes);
+  if (JSON.stringify(storedNotes) !== JSON.stringify(parsed.voiceNotes)) {
+    await setUserData(userDataKeys.notes, JSON.stringify({ ...parsed, voiceNotes: storedNotes }));
   }
+  return { ...parsed, voiceNotes: displayNotes };
 };
 
 // ==========================================
@@ -123,21 +127,47 @@ export default function NotesScreen() {
   const [activeTab, setActiveTab] = useState<'notes' | 'readLater' | 'voice'>('notes');
   const [data, setData] = useState<AppDataStore>({ notes: [], links: [], voiceNotes: [] });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Recording State
   const [activeRecording, setActiveRecording] = useState<Audio.Recording | null>(null);
   const [recordingTimer, setRecordingTimer] = useState(0);
 
-  useEffect(() => {
-    loadFromJSON().then((loadedData) => {
-      setData(loadedData);
+  const reloadNotes = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      setData(await loadFromJSON());
+    } catch (error) {
+      console.error('Could not load notes and recordings:', error);
+      setLoadError(error instanceof Error ? error.message : 'Could not load notes and recordings.');
+    } finally {
       setLoading(false);
-    });
+    }
   }, []);
 
+  useEffect(() => { void reloadNotes(); }, [reloadNotes]);
+
   useEffect(() => {
-    if (!loading) saveToJSON(data);
-  }, [data, loading]);
+    if (!loading && !loadError) saveToJSON(data);
+  }, [data, loading, loadError]);
+
+  if (loading || loadError) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={[styles.flex1, { alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+          <Text style={{ color: loadError ? theme.colors.danger : theme.colors.textSecondary, textAlign: 'center' }}>
+            {loadError ? `Could not load your notes and recordings: ${loadError}` : 'Loading your notes and recordings...'}
+          </Text>
+          {loadError ? (
+            <TouchableOpacity onPress={() => void reloadNotes()} style={{ marginTop: 16, padding: 12 }}>
+              <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>Retry</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // --- RECORDING FUNCTIONS ---
   const startGlobalRecording = async () => {
@@ -175,7 +205,24 @@ export default function NotesScreen() {
   // --- UPDATE WRAPPERS ---
   const updateNotes = (newNotes: Note[]) => setData(prev => ({ ...prev, notes: newNotes }));
   const updateLinks = (newLinks: LinkItem[]) => setData(prev => ({ ...prev, links: newLinks }));
-  const updateVoiceNotes = (newVoiceNotes: VoiceNote[]) => setData(prev => ({ ...prev, voiceNotes: newVoiceNotes }));
+  const updateVoiceNotes = (newVoiceNotes: VoiceNote[]) => {
+    const removedPaths = data.voiceNotes
+      .filter((note) => !newVoiceNotes.some((next) => next.id === note.id))
+      .map((note) => note.storagePath)
+      .filter((path): path is string => Boolean(path));
+
+    void prepareVoiceMedia(newVoiceNotes).then(({ displayNotes }) => {
+      setData((prev) => ({ ...prev, voiceNotes: displayNotes }));
+      if (removedPaths.length > 0) {
+        void deleteUserMedia(removedPaths).catch((error) => {
+          console.error('Could not delete removed voice recordings:', error);
+        });
+      }
+    }).catch((error) => {
+      console.error('Could not upload voice recordings:', error);
+      Alert.alert('Upload failed', 'Your voice recording could not be saved to your account. Please check your connection and try again.');
+    });
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

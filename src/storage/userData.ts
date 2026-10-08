@@ -1,15 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { requireSupabase } from '../lib/supabase';
+import { prepareProfileMedia, prepareVoiceMedia } from './media';
 
 const APP_DATA_KEY = 'DHIRAJX_APP_DATA';
+const PREFERENCES_KEY = 'duper_preferences_v1';
 const PLANNER_KEY = 'plannerTasks_v3';
 const FOCUS_KEY = 'focus_of_day_v1';
 const WATER_KEY = 'water_tracker_v1';
 const NOTES_KEY = 'app_data_notes_v12.json';
 const EXPENSES_KEY = 'expenses_data_store.json';
 const MIGRATION_KEY = 'duper:legacy-data-migrated';
-const DATA_KEYS = [APP_DATA_KEY, PLANNER_KEY, FOCUS_KEY, WATER_KEY, NOTES_KEY, EXPENSES_KEY];
+const DATA_KEYS = [APP_DATA_KEY, PREFERENCES_KEY, PLANNER_KEY, FOCUS_KEY, WATER_KEY, NOTES_KEY, EXPENSES_KEY];
 const FILES: Record<string, string> = {
   [NOTES_KEY]: 'app_data_notes_v12.json',
   [EXPENSES_KEY]: 'expenses_data_store.json'
@@ -54,6 +56,36 @@ async function cacheValue(userId: string, key: string, value: string): Promise<v
   await writeLocalFile(key, value);
 }
 
+async function syncStoredMedia(): Promise<void> {
+  const profileJson = await getUserData(APP_DATA_KEY);
+  if (profileJson) {
+    const appData = JSON.parse(profileJson) as {
+      profile: { avatarUri?: string; avatarStoragePath?: string; [key: string]: unknown };
+      [key: string]: unknown;
+    };
+    const profile = await prepareProfileMedia(appData.profile);
+    if (profile.avatarStoragePath) {
+      const storedData = {
+        ...appData,
+        profile: { ...profile, avatarUri: '' }
+      };
+      const storedJson = JSON.stringify(storedData);
+      if (storedJson !== profileJson) await setUserData(APP_DATA_KEY, storedJson);
+    }
+  }
+
+  const notesJson = await getUserData(NOTES_KEY);
+  if (notesJson) {
+    const notesData = JSON.parse(notesJson) as {
+      voiceNotes: { id: string; uri: string; storagePath?: string }[];
+      [key: string]: unknown;
+    };
+    const { storedNotes } = await prepareVoiceMedia(notesData.voiceNotes);
+    const storedJson = JSON.stringify({ ...notesData, voiceNotes: storedNotes });
+    if (storedJson !== notesJson) await setUserData(NOTES_KEY, storedJson);
+  }
+}
+
 export async function syncUserData(userId: string): Promise<void> {
   const client = requireSupabase();
   const { data: remoteRows, error } = await client
@@ -94,6 +126,7 @@ export async function syncUserData(userId: string): Promise<void> {
       }
     }
     for (const { key, value } of entries) await cacheValue(userId, key, value);
+    await syncStoredMedia();
     return;
   }
 
@@ -109,6 +142,7 @@ export async function syncUserData(userId: string): Promise<void> {
   for (const { key, value } of rows) {
     if (DATA_KEYS.includes(key)) await cacheValue(userId, key, value);
   }
+  await syncStoredMedia();
 }
 
 export async function getUserData(key: string): Promise<string | null> {
@@ -161,6 +195,18 @@ export async function saveWidgetPlannerData(value: string): Promise<void> {
 export async function removeUserData(keys: string[]): Promise<void> {
   if (!activeUserId) throw new Error('User data cannot be removed before the account has synced.');
   const userId = activeUserId;
+  const mediaPaths: string[] = [];
+  if (keys.includes(NOTES_KEY)) {
+    const notesJson = await getUserData(NOTES_KEY);
+    if (notesJson) {
+      const notes = JSON.parse(notesJson) as {
+        voiceNotes?: { storagePath?: string }[];
+      };
+      mediaPaths.push(...(notes.voiceNotes || [])
+        .map((note) => note.storagePath)
+        .filter((path): path is string => Boolean(path)));
+    }
+  }
   const { error } = await requireSupabase()
     .from('duper_user_data')
     .delete()
@@ -168,6 +214,13 @@ export async function removeUserData(keys: string[]): Promise<void> {
     .in('key', keys);
   if (error) throw error;
 
+  if (mediaPaths.length > 0) {
+    const { error: mediaError } = await requireSupabase()
+      .storage
+      .from('duper-media')
+      .remove(mediaPaths);
+    if (mediaError) throw mediaError;
+  }
   await AsyncStorage.multiRemove(keys.map((key) => localKey(userId, key)));
   if (keys.includes(PLANNER_KEY)) await AsyncStorage.removeItem(PLANNER_KEY);
   for (const key of keys) {
@@ -192,6 +245,7 @@ export async function clearUserSessionData(): Promise<void> {
 
 export const userDataKeys = {
   app: APP_DATA_KEY,
+  preferences: PREFERENCES_KEY,
   planner: PLANNER_KEY,
   focus: FOCUS_KEY,
   water: WATER_KEY,
