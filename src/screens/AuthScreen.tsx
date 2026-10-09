@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { theme } from '../theme/theme';
@@ -32,7 +32,11 @@ export default function AuthScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.card}>
-          <Text style={styles.brand}>Duper</Text>
+          <Image
+            accessibilityLabel="Duper logo"
+            source={require('../../assets/images/duper-logo.png')}
+            style={styles.logo}
+          />
           <Text style={styles.title}>{configured ? (isSignUp ? 'Create your account' : 'Welcome back') : 'Supabase setup needed'}</Text>
           <Text style={styles.subtitle}>
             {configured
@@ -87,8 +91,8 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.colors.background },
   container: { flex: 1, justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: theme.colors.card, borderRadius: 20, padding: 24, gap: 16 },
-  brand: { color: theme.colors.primary, fontSize: 16, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
+  card: { backgroundColor: theme.colors.card, borderRadius: 20, padding: 24, gap: 16, alignItems: 'flex-start' },
+  logo: { width: 88, height: 88, borderRadius: 18, backgroundColor: '#05080D' },
   title: { color: theme.colors.text, fontSize: 27, fontWeight: '700' },
   subtitle: { color: theme.colors.textSecondary, fontSize: 15, lineHeight: 22, marginBottom: 4 },
   input: {

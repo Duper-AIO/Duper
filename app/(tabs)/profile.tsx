@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as ImagePicker from 'expo-image-picker';
+import Constants from 'expo-constants';
 import { useFocusEffect } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
@@ -11,6 +13,7 @@ import {
     Image,
     Linking, // Added Linking import
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Switch,
@@ -69,6 +72,23 @@ export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+
+  const openFullScreenAlarmSettings = async () => {
+    if (Platform.OS !== 'android' || Number(Platform.Version) < 34) {
+      Alert.alert('Full-screen reminders', 'Android manages full-screen reminder access on this device.');
+      return;
+    }
+
+    try {
+      await IntentLauncher.startActivityAsync(
+        IntentLauncher.ActivityAction.MANAGE_APP_USE_FULL_SCREEN_INTENT,
+        { data: `package:${Constants.expoConfig?.android?.package || 'com.dhirajx.duper'}` }
+      );
+    } catch (error) {
+      Alert.alert('Settings unavailable', 'Open Android Settings > Apps > Duper > Alarms & reminders to allow full-screen reminders.');
+      console.error('Could not open full-screen reminder settings:', error);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -339,6 +359,15 @@ export default function ProfileScreen() {
             color="#6366F1"
             rightElement={<Switch value={notificationsEnabled} onValueChange={setNotificationsEnabled} trackColor={{true: theme.colors.primary}} />}
           />
+          {Platform.OS === 'android' ? (
+            <SettingRow
+              icon="alarm-outline"
+              label="Full-screen reminders"
+              subLabel="Allow alarms over the lock screen"
+              color="#2563EB"
+              onPress={() => void openFullScreenAlarmSettings()}
+            />
+          ) : null}
           <SettingRow 
             icon="moon-outline" 
             label="Dark Mode" 

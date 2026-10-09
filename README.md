@@ -32,7 +32,11 @@ Duper uses Supabase email/password authentication and a private, per-user databa
 
 For Expo builds and GitHub Actions, set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in the build environment instead of committing `.env`. Expo embeds `EXPO_PUBLIC_` values in the JS bundle.
 
-Text and structured app records, profile pictures, and voice recordings sync through the private `duper-media` bucket. Each account can access only its own records and uploaded files. Audio uploads are transcoded to MP3 for reduced bandwidth.
+For EAS cloud builds, add both variables under the **production** environment in the Duper project's EAS environment-variable settings. The `preview` build profile also uses the `production` environment. A local `.env` is ignored by Git and is not included in a cloud build. EAS builds now stop with an explicit error if either value is missing, rather than producing an app that opens to the Supabase setup screen. After adding the variables, create and install a new Android build with `eas build --platform android --profile preview` (or `--profile production`).
+
+On Android 14 and later, enable **Full-screen reminders** from the Profile > Preferences section to allow task alarms to open over the lock screen. Android may otherwise show the normal notification instead.
+
+Text and structured app records, profile pictures, and voice recordings sync through the private `duper-media` bucket. Each account can access only its own records and uploaded files. Audio uploads are limited to 50 MB per file.
 
 ### 🏠 Comprehensive Dashboard & Health Hub
 The **Home Page** acts as your central command centre, offering real-time updates on your environment and personal progress.

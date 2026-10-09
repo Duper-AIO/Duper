@@ -420,7 +420,7 @@ const HomeScreen: React.FC = () => {
         <View style={styles.headerRow}>
            <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
                <Image 
-                 source={require('../../assets/images/android-icon-foreground.png')}
+                 source={require('../../assets/images/duper-logo.png')}
                  style={styles.logoImage}
                  resizeMode="contain"
                />
